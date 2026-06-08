@@ -1,0 +1,6 @@
+aiohttp
+websockets
+numpy
+requests
+python-dotenv
+pypinyin
