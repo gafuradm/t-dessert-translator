@@ -667,6 +667,9 @@ async def handle_index(request):
     const chatSend = document.getElementById('chatSend');
     const downloadBtn = document.getElementById('downloadBtn');
 
+    // Определяем протокол WebSocket: wss для HTTPS, ws для HTTP
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
     function addToHistory(direction, source, target) {
         historyItems.unshift({ timestamp: new Date().toLocaleTimeString(), direction, source, target });
         let html = '';
@@ -685,7 +688,7 @@ async def handle_index(request):
         chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
     }
     function initChatWebSocket() {
-        chatWs = new WebSocket(`ws://${window.location.host}/ws_chat`);
+        chatWs = new WebSocket(`${wsProtocol}//${window.location.host}/ws_chat`);
         chatWs.onmessage = (e) => {
             const data = JSON.parse(e.data);
             if (data.type === 'chat_answer') addChatMessage(data.question, data.answer);
@@ -703,7 +706,7 @@ async def handle_index(request):
     downloadBtn.onclick = () => window.location.href = '/download_lecture';
 
     function connectWebSocket() {
-        ws = new WebSocket(`ws://${window.location.host}/ws`);
+        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
         ws.onopen = () => { statusDiv.innerText = '✅ Connected. Starting mic...'; startMicrophone(); };
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
@@ -876,7 +879,8 @@ async def handle_admin(request):
     <div id="messages"></div>
 </div>
 <script>
-    const ws = new WebSocket(`ws://${window.location.host}/ws_chat?admin=true`);
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws_chat?admin=true`);
     const messagesDiv = document.getElementById('messages');
     const adminQuestion = document.getElementById('adminQuestion');
     const adminSend = document.getElementById('adminSend');
@@ -922,7 +926,7 @@ async def handle_admin(request):
 </html>'''
     return web.Response(text=html, content_type='text/html')
 
-# ================= Новая страница: чёрно-белый сайт‑визитка школы =================
+# ================= Чёрно-белая страница школы =================
 async def handle_school(request):
     html = '''<!DOCTYPE html>
 <html>
@@ -1172,6 +1176,7 @@ async def start_http_server():
     app.router.add_get('/ws_chat', chat_websocket_handler)
     runner = web.AppRunner(app)
     await runner.setup()
+    # Render устанавливает переменную окружения PORT, используем её
     port = int(os.environ.get("PORT", 8000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
