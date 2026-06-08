@@ -667,7 +667,6 @@ async def handle_index(request):
     const chatSend = document.getElementById('chatSend');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // Определяем протокол WebSocket: wss для HTTPS, ws для HTTP
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
     function addToHistory(direction, source, target) {
@@ -689,11 +688,13 @@ async def handle_index(request):
     }
     function initChatWebSocket() {
         chatWs = new WebSocket(`${wsProtocol}//${window.location.host}/ws_chat`);
+        chatWs.onopen = () => console.log('Chat WebSocket opened');
         chatWs.onmessage = (e) => {
             const data = JSON.parse(e.data);
             if (data.type === 'chat_answer') addChatMessage(data.question, data.answer);
         };
         chatWs.onclose = () => setTimeout(initChatWebSocket, 3000);
+        chatWs.onerror = (err) => console.error('Chat WS error:', err);
     }
     chatSend.onclick = () => {
         const text = chatInput.value.trim();
@@ -707,7 +708,11 @@ async def handle_index(request):
 
     function connectWebSocket() {
         ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
-        ws.onopen = () => { statusDiv.innerText = '✅ Connected. Starting mic...'; startMicrophone(); };
+        ws.onopen = () => {
+            console.log('Main WebSocket opened');
+            statusDiv.innerText = '✅ Connected. Starting mic...';
+            startMicrophone();
+        };
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
             if (data.type === 'teacher_speech') teacherTextSpan.innerText = data.text;
@@ -725,13 +730,15 @@ async def handle_index(request):
                 setTimeout(() => guestResultDiv.style.display = 'none', 5000);
             }
         };
-        ws.onclose = () => statusDiv.innerText = '❌ Disconnected. Reload.';
+        ws.onclose = () => { console.log('Main WebSocket closed'); statusDiv.innerText = '❌ Disconnected. Reload.'; };
+        ws.onerror = (err) => console.error('Main WS error:', err);
     }
     async function startMicrophone() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('Microphone stream obtained');
             mediaStream = stream;
-            audioContext = new AudioContext({ sampleRate: 16000 });
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
             const source = audioContext.createMediaStreamSource(stream);
             processorNode = audioContext.createScriptProcessor(2048, 1, 1);
             source.connect(processorNode);
@@ -746,11 +753,18 @@ async def handle_index(request):
                         pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                     }
                     ws.send(JSON.stringify({ type: 'audio_chunk', data: Array.from(pcm16) }));
+                    // console.log('Audio chunk sent'); // раскомментировать для отладки
+                } else {
+                    console.log('WebSocket not open, cannot send audio');
                 }
             };
             await audioContext.resume();
+            console.log('AudioContext resumed');
             statusDiv.innerText = '🎙️ Listening to teacher...';
-        } catch(err) { statusDiv.innerText = '❌ Microphone access denied'; }
+        } catch(err) {
+            console.error('Microphone error:', err);
+            statusDiv.innerText = '❌ Microphone access denied';
+        }
     }
     guestBtn.onclick = () => {
         if (!('webkitSpeechRecognition' in window)) { alert('Speech recognition not supported'); return; }
@@ -770,6 +784,7 @@ async def handle_index(request):
             }
         };
         recognition.onerror = (e) => {
+            console.error('Recognition error', e);
             statusDiv.innerText = '⚠️ Recognition error';
             guestModeActive = false;
             guestBtn.disabled = false;
@@ -885,6 +900,9 @@ async def handle_admin(request):
     const adminQuestion = document.getElementById('adminQuestion');
     const adminSend = document.getElementById('adminSend');
 
+    ws.onopen = () => console.log('Admin WebSocket opened');
+    ws.onerror = (err) => console.error('Admin WS error:', err);
+
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -926,8 +944,9 @@ async def handle_admin(request):
 </html>'''
     return web.Response(text=html, content_type='text/html')
 
-# ================= Чёрно-белая страница школы =================
 async def handle_school(request):
+    # (страница школы без изменений – очень длинная, но она уже есть выше)
+    # Для краткости оставим прежнюю версию. Она не влияет на ошибку.
     html = '''<!DOCTYPE html>
 <html>
 <head>
@@ -1176,7 +1195,6 @@ async def start_http_server():
     app.router.add_get('/ws_chat', chat_websocket_handler)
     runner = web.AppRunner(app)
     await runner.setup()
-    # Render устанавливает переменную окружения PORT, используем её
     port = int(os.environ.get("PORT", 8000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
